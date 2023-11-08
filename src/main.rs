@@ -29,14 +29,13 @@ fn main() {
     }
 }
 
-fn app(wordle: Wordle) -> Result<()> {
+fn app(mut wordle: Wordle) -> Result<()> {
     
     terminal::enable_raw_mode()?;
 
+    let mut guess = String::new();
     loop {
         if let Event::Key(KeyEvent { code, modifiers, .. }) = event::read()? {
-
-            let mut guess = String::new();
 
             match (code, modifiers) {
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Esc, _) => break,
@@ -46,15 +45,57 @@ fn app(wordle: Wordle) -> Result<()> {
                     }
 
                     guess.push(c);
-                    let character_hint = wordle.hint(&c);
+                    let hint = wordle.hint(&c, guess.len() - 1);
+                    let color = match hint {
+                        None => style::Color::Reset,
+                        Some(Hint::Green(_)) => style::Color::Green,
+                        Some(Hint::Yellow) => style::Color::Yellow,
+                        Some(Hint::Gray) => style::Color::Grey,
+                    };
                     io::stdout()
+                        .execute(style::SetForegroundColor(color))?
                         .execute(style::Print(c))?;
                 },
                 (KeyCode::Backspace, _) => {
-                    return Err(anyhow!("Backspace unhandled"))
+                    if guess.len() == 0 {
+                        continue;
+                    }
+
+                    guess.pop();
+                    io::stdout()
+                        .execute(cursor::MoveLeft(1))?
+                        .execute(style::Print(' '))?
+                        .execute(cursor::MoveLeft(1))?;
                 },
                 (KeyCode::Enter, _) => {
-                    return Err(anyhow!("Enter unhandled"))
+                    if guess.len() != 5 {
+                        continue;
+                    }
+
+                    let result = wordle.guess(&guess);
+
+                    io::stdout()
+                        .execute(cursor::MoveToColumn(0))?;
+
+                    for (c, hint) in result {
+                        let (fg, bg) = match hint {
+                            Hint::Green(_) => (style::Color::Black, style::Color::DarkGreen),
+                            Hint::Yellow => (style::Color::Black, style::Color::DarkYellow),
+                            Hint::Gray => (style::Color::White, style::Color::DarkGrey),
+                        };
+                        io::stdout()
+                            .execute(style::SetForegroundColor(fg))?
+                            .execute(style::SetBackgroundColor(bg))?
+                            .execute(style::Print(c))?;
+                    }
+
+                    io::stdout()
+                        .execute(style::SetForegroundColor(style::Color::Reset))?
+                        .execute(style::SetBackgroundColor(style::Color::Reset))?
+                        .execute(style::Print('\n'))?
+                        .execute(cursor::MoveToColumn(0))?;
+
+                    guess.clear();
                 }
                 (_,_) => {},
             }

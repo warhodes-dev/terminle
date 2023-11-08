@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use anyhow::{Result, anyhow};
 
 pub mod words;
 
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub enum Hint {
     Gray,
     Yellow,
-    Green,
+    Green(usize),
 }
 
 type Guess = Vec<(char, Hint)>;
@@ -24,18 +26,17 @@ impl Wordle {
     }
 
     /// Guess a string and add it to the list of guesses
-    pub fn guess(&mut self, guess: String) -> Result<Guess> {
-        if guess.len() != 5 {
-            return Err(anyhow!("Guess must be exactly length 5"));
-        }
+    pub fn guess(&mut self, guess: &str) -> Guess {
+        assert_eq!(guess.len(), 5);
 
         let solution = &self.word;
         let guess_result = guess.chars()
             .zip(solution.chars())
-            .map(|(guess_char, solution_char)| {
+            .enumerate()
+            .map(|(idx, (guess_char, solution_char))| {
                 let hint = 
                     if guess_char == solution_char {
-                        Hint::Green
+                        Hint::Green(idx)
                     } else if solution.contains(guess_char) {
                         Hint::Yellow
                     } else {
@@ -46,16 +47,33 @@ impl Wordle {
             .collect::<Guess>();
 
         self.guesses.push(guess_result.clone());
-        Ok(guess_result)
+        guess_result
     }
 
     /// Provide a hint for a single character
-    pub fn hint(&self, char: &char) -> Option<&Hint> {
-        self.guesses.iter()
+    pub fn hint(&self, char: &char, pos: usize) -> Option<Hint> {
+        let mut overall_hint = None;
+
+        let known_hints = self.guesses.iter()
             .flatten()
-            .filter_map(|(c, hint)| (c == char).then_some(hint))
-            .reduce(|dominant, hint| {
-                std::cmp::max(dominant, hint)
-            })
+            .filter_map(|(c, hint)| (c == char).then_some(*hint));
+
+        for hint in known_hints.rev() {
+            if let Hint::Green(idx) = hint {
+                if idx == pos {
+                    overall_hint = Some(hint);
+                    break;
+                } else {
+                    overall_hint = Some(Hint::Yellow)
+                }
+            } else if hint == Hint::Yellow {
+                overall_hint = Some(hint);
+                break;
+            } else if hint == Hint::Gray {
+                overall_hint = Some(hint);
+            }
+        }
+
+        overall_hint
     }
 }
